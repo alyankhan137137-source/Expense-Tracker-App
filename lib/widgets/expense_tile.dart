@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/expense.dart';
+import '../services/app_settings.dart';
 
-/// Reusable tile component displaying individual expense summary with edit & delete actions.
+/// Reusable list item displaying transaction metadata, tags, recurrence, and Privacy Mode support.
 class ExpenseTile extends StatelessWidget {
   final Expense expense;
   final VoidCallback onEdit;
@@ -17,9 +18,12 @@ class ExpenseTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final currencyFormat = NumberFormat.currency(symbol: '\$', decimalDigits: 2);
+    final settings = AppSettings.instance;
     final dateFormat = DateFormat('MMM dd, yyyy');
     final theme = Theme.of(context);
+
+    final isIncome = expense.transactionType == TransactionType.income;
+    final amountColor = isIncome ? Colors.green : Colors.red;
 
     return Card(
       elevation: 0,
@@ -44,50 +48,99 @@ class ExpenseTile extends StatelessWidget {
             size: 24,
           ),
         ),
-        title: Text(
-          expense.title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                expense.title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (expense.recurrencePeriod != RecurrencePeriod.none)
+              Container(
+                margin: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  expense.recurrencePeriod.displayName,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+          ],
         ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            children: [
-              Text(
-                expense.category.displayName,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: expense.category.color,
-                  fontWeight: FontWeight.w600,
-                ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  Text(
+                    expense.category.displayName,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: expense.category.color,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '•',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    dateFormat.format(expense.date),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text(
-                '•',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                dateFormat.format(expense.date),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
+            ),
+            if (expense.tags.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 4,
+                runSpacing: 2,
+                children: expense.tags.map((tag) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '#$tag',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
             ],
-          ),
+          ],
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              currencyFormat.format(expense.amount),
+              '${isIncome ? '+' : '-'}${settings.formatAmount(expense.amount, currencySymbol: expense.currencySymbol)}',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.error,
+                color: amountColor,
               ),
             ),
             PopupMenuButton<String>(
@@ -131,12 +184,11 @@ class ExpenseTile extends StatelessWidget {
     );
   }
 
-  /// Prompts confirmation modal before deleting an expense item.
   void _showDeleteDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Expense'),
+        title: const Text('Delete Record'),
         content: Text('Are you sure you want to delete "${expense.title}"?'),
         actions: [
           TextButton(

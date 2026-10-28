@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/expense.dart';
 import '../models/expense_category.dart';
 
-/// Modal bottom sheet dialog for adding a new expense or editing an existing one.
+/// Modal bottom sheet dialog for adding/editing income and expenses.
 class ExpenseFormDialog extends StatefulWidget {
   final Expense? expenseToEdit;
   final Function(Expense) onSave;
@@ -22,8 +22,14 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _titleController;
   late TextEditingController _amountController;
+  late TextEditingController _tagsController;
   late DateTime _selectedDate;
   late ExpenseCategory _selectedCategory;
+  late TransactionType _transactionType;
+  late RecurrencePeriod _recurrencePeriod;
+  late String _currencySymbol;
+
+  final List<String> _currencies = ['\$', '€', '£', '₹', '¥'];
 
   @override
   void initState() {
@@ -33,18 +39,22 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
     _amountController = TextEditingController(
       text: expense != null ? expense.amount.toStringAsFixed(2) : '',
     );
+    _tagsController = TextEditingController(text: expense?.tags.join(', ') ?? '');
     _selectedDate = expense?.date ?? DateTime.now();
     _selectedCategory = expense?.category ?? ExpenseCategory.food;
+    _transactionType = expense?.transactionType ?? TransactionType.expense;
+    _recurrencePeriod = expense?.recurrencePeriod ?? RecurrencePeriod.none;
+    _currencySymbol = expense?.currencySymbol ?? '\$';
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _amountController.dispose();
+    _tagsController.dispose();
     super.dispose();
   }
 
-  /// Opens native DatePicker to pick expense date.
   Future<void> _pickDate() async {
     final pickedDate = await showDatePicker(
       context: context,
@@ -60,11 +70,12 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
     }
   }
 
-  /// Validates and submits expense data.
   void _submitData() {
     if (_formKey.currentState!.validate()) {
       final title = _titleController.text.trim();
       final amount = double.parse(_amountController.text.trim());
+      final rawTags = _tagsController.text.split(',');
+      final tagsList = rawTags.map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
 
       final updatedExpense = Expense(
         id: widget.expenseToEdit?.id,
@@ -72,6 +83,10 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
         amount: amount,
         date: _selectedDate,
         category: _selectedCategory,
+        transactionType: _transactionType,
+        recurrencePeriod: _recurrencePeriod,
+        tags: tagsList,
+        currencySymbol: _currencySymbol,
       );
 
       widget.onSave(updatedExpense);
@@ -107,7 +122,7 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      isEditing ? 'Edit Expense' : 'Add New Expense',
+                      isEditing ? 'Edit Transaction' : 'Add New Transaction',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -120,12 +135,35 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                 ),
                 const SizedBox(height: 16),
 
+                // Transaction Type Toggle (Income vs Expense)
+                SegmentedButton<TransactionType>(
+                  segments: const [
+                    ButtonSegment(
+                      value: TransactionType.expense,
+                      label: Text('Expense'),
+                      icon: Icon(Icons.arrow_upward, color: Colors.red),
+                    ),
+                    ButtonSegment(
+                      value: TransactionType.income,
+                      label: Text('Income'),
+                      icon: Icon(Icons.arrow_downward, color: Colors.green),
+                    ),
+                  ],
+                  selected: {_transactionType},
+                  onSelectionChanged: (selection) {
+                    setState(() {
+                      _transactionType = selection.first;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+
                 // Title Input Field
                 TextFormField(
                   controller: _titleController,
                   decoration: InputDecoration(
                     labelText: 'Title',
-                    hintText: 'e.g., Grocery Shopping',
+                    hintText: 'e.g., Monthly Salary or Grocery',
                     prefixIcon: const Icon(Icons.edit_note),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -133,39 +171,55 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Please enter an expense title';
+                      return 'Please enter a title';
                     }
                     return null;
                   },
                 ),
                 const SizedBox(height: 16),
 
-                // Amount Input Field
-                TextFormField(
-                  controller: _amountController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    labelText: 'Amount (\$)',
-                    hintText: '0.00',
-                    prefixIcon: const Icon(Icons.attach_money),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                // Amount & Currency Row
+                Row(
+                  children: [
+                    DropdownButton<String>(
+                      value: _currencySymbol,
+                      items: _currencies.map((c) {
+                        return DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontWeight: FontWeight.bold)));
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) setState(() => _currencySymbol = val);
+                      },
                     ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter an amount';
-                    }
-                    final parsed = double.tryParse(value.trim());
-                    if (parsed == null || parsed <= 0) {
-                      return 'Please enter a valid positive amount';
-                    }
-                    return null;
-                  },
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _amountController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Amount',
+                          hintText: '0.00',
+                          prefixIcon: const Icon(Icons.attach_money),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Please enter an amount';
+                          }
+                          final parsed = double.tryParse(value.trim());
+                          if (parsed == null || parsed <= 0) {
+                            return 'Please enter a valid amount';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
 
-                // Date Selection Row
+                // Date Picker Row
                 InkWell(
                   onTap: _pickDate,
                   borderRadius: BorderRadius.circular(12),
@@ -203,12 +257,44 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                 ),
                 const SizedBox(height: 16),
 
+                // Recurrence Selector
+                DropdownButtonFormField<RecurrencePeriod>(
+                  initialValue: _recurrencePeriod,
+                  decoration: InputDecoration(
+                    labelText: 'Repeat Schedule',
+                    prefixIcon: const Icon(Icons.repeat),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  items: RecurrencePeriod.values.map((rp) {
+                    return DropdownMenuItem(
+                      value: rp,
+                      child: Text(rp.displayName),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) setState(() => _recurrencePeriod = val);
+                  },
+                ),
+                const SizedBox(height: 16),
+
+                // Tags Input
+                TextFormField(
+                  controller: _tagsController,
+                  decoration: InputDecoration(
+                    labelText: 'Tags (comma separated)',
+                    hintText: 'e.g. work, groceries, vacation',
+                    prefixIcon: const Icon(Icons.label_outlined),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 // Category Selection Choice Chips
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Select Category',
+                      'Category',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: theme.colorScheme.onSurfaceVariant,
@@ -259,7 +345,7 @@ class _ExpenseFormDialogState extends State<ExpenseFormDialog> {
                     ),
                   ),
                   child: Text(
-                    isEditing ? 'Update Expense' : 'Save Expense',
+                    isEditing ? 'Update Transaction' : 'Save Transaction',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),

@@ -15,8 +15,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.expensetrackerapp"
+        // Updated to production Application ID
+        applicationId = "com.finance.expensetracker"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -26,9 +26,12 @@ android {
     }
 
     buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+        getByName("release") {
+            // Enable R8 minification and resource shrinking for optimized Play Store release
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Signing with the debug keys for now, configure your release keystore before publishing
             signingConfig = signingConfigs.getByName("debug")
         }
     }
